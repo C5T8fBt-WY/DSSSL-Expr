@@ -2,27 +2,22 @@
 name = "dsssl-expr-public"
 version = "0.1.0"
 description = "NTK-based Data Shapley pseudo-labeling for semi-supervised learning — demo code for JSAI 2026"
+license = "MIT"
+requires-python = ">=3.12"
 dependencies = [
-    # JAX ecosystem — pin to match neural-tangents 0.6.5 requirements
     "jax==0.4.34",
     "jaxlib==0.4.34",
     "neural-tangents==0.6.5",
-    # Demo
-    "gradio>=5.0.0",
-    # Data
+    "gradio==6.14.0",
     "torch>=2.0.0",
     "torchvision>=0.15.0",
-    # Utilities
     "numpy>=1.24.0",
-    "scipy>=1.10.0",
     "matplotlib>=3.7.0",
 ]
-requires-python = ">=3.12"
 
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.uv]
-# On Windows, JAX must be installed manually (see README).
-# On Linux/macOS: `uv sync` handles everything.
+[tool.setuptools]
+py-modules = ["ntk_ds"]

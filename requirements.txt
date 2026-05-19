@@ -1,0 +1,10 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+jax==0.4.34
+jaxlib==0.4.34
+neural-tangents==0.6.5
+gradio==6.14.0
+torch>=2.0.0
+torchvision>=0.15.0
+numpy>=1.24.0
+matplotlib>=3.7.0

@@ -1,8 +1,21 @@
+---
+title: NTK Data Shapley Demo
+emoji: 🧪
+colorFrom: blue
+colorTo: indigo
+sdk: gradio
+sdk_version: 6.14.0
+app_file: demo/app.py
+python_version: "3.12"
+pinned: false
+license: mit
+---
+
 # DSSSL-Expr — NTK-based Data Shapley Pseudo-Labeling
 
-Demo and experiment code for the JSAI 2026 paper:
+Demo and reference code for the JSAI 2026 paper:
 
-> **Fundamental Study on Data Shapley-based Pseudo-Labeling via Neural Tangent Kernel**  
+> **Fundamental Study on Data Shapley-based Pseudo-Labeling via Neural Tangent Kernel**
 > R. Mitoma, T. Mukaeda, K. Shima — Yokohama National University
 
 ---
@@ -12,8 +25,7 @@ Demo and experiment code for the JSAI 2026 paper:
 Standard pseudo-labeling relies on a trained model to estimate labels for unlabeled data.
 This work shows that the Data Shapley value of an unlabeled point can be computed **without any training**, using the analytical Neural Tangent Kernel (NTK) of a randomly initialized network.
 
-The key result: the ensemble average of Data Shapley values computed over many random initializations converges to the deterministic analytical NTK as a Monte Carlo approximation.
-This enables **training-free**, deterministic pseudo-label selection in a fraction of the time.
+Key result: the ensemble average of Data Shapley values over many random initializations converges to the deterministic analytical NTK as a Monte Carlo approximation, enabling **training-free**, deterministic pseudo-label selection in a fraction of the time.
 
 ### Core formula
 
@@ -32,19 +44,17 @@ The candidate label with the highest score is selected as the pseudo-label.
 ## Quick start
 
 ```bash
-# Install (Linux / macOS)
-uv sync
+# Install dependencies
+uv sync                  # or:  pip install -r requirements.txt
 
-# Windows — install JAX manually first:
-#   pip install "jax[cpu]"
-#   then: uv sync --no-build-isolation
-
-# Run the minimal example
+# Run the minimal example (≈ 61% MNIST accuracy on 1000 unlabeled samples)
 uv run python ntk_ds.py
 
 # Launch the interactive Gradio demo
 uv run python demo/app.py
 ```
+
+First launch takes ~30–60 s (MNIST download + analytical-NTK JIT trace); subsequent runs are fast.
 
 ---
 
@@ -52,9 +62,9 @@ uv run python demo/app.py
 
 | File | Description |
 |------|-------------|
-| `ntk_ds.py` | **Copy-paste-friendly core utility.** Three functions: `build_mlp_kernel_fn`, `compute_ntk_scores`, `select_pseudo_labels`. No private dependencies. |
-| `demo/app.py` | Gradio web demo: browse MNIST unlabeled samples and inspect DS score distributions. |
-| `pyproject.toml` | Dependencies (JAX, neural-tangents, Gradio, PyTorch for data loading). |
+| [`ntk_ds.py`](ntk_ds.py) | **Copy-paste-friendly core utility.** Three functions: `build_mlp_kernel_fn`, `compute_ntk_scores`, `select_pseudo_labels`. No private dependencies. |
+| [`demo/app.py`](demo/app.py) | Gradio web demo: browse MNIST unlabeled samples and inspect their DS score distributions. |
+| [`pyproject.toml`](pyproject.toml) / [`requirements.txt`](requirements.txt) | Dependencies (JAX, neural-tangents, Gradio, PyTorch for data loading). |
 
 ---
 
@@ -64,17 +74,16 @@ uv run python demo/app.py
 import numpy as np
 from ntk_ds import build_mlp_kernel_fn, compute_ntk_scores, select_pseudo_labels
 
-# labeled_x: (n_L, d)  labeled features
-# labeled_y: (n_L,)    integer class labels
-# unlabeled_x: (n_U, d) unlabeled features
+# labeled_x:   (n_L, d)   labeled features
+# labeled_y:   (n_L,)     integer class labels
+# unlabeled_x: (n_U, d)   unlabeled features
 
 kernel_fn     = build_mlp_kernel_fn(hidden_size=256)
 scores        = compute_ntk_scores(labeled_x, labeled_y, unlabeled_x, kernel_fn)
 pseudo_labels = select_pseudo_labels(scores)   # shape (n_U,)
 ```
 
-Achieves **~61% pseudo-label accuracy on MNIST** with only 5 labeled examples per class
-(vs. 10% random baseline and ~47% for a single-model ensemble), computed in under 0.1 s.
+With 5 labeled examples per class and 1000 unlabeled samples, this achieves **≈ 61% MNIST pseudo-label accuracy** (vs. the 10% random baseline), computed in well under one second after JIT warm-up.
 
 ---
 
@@ -90,14 +99,18 @@ Achieves **~61% pseudo-label accuracy on MNIST** with only 5 labeled examples pe
 
 ```bibtex
 @inproceedings{mitoma2026jsai,
-  title  = {Neural Tangent Kernel を導入した Data Shapley 型疑似ラベル法に関する基礎検討},
-  author = {Mitoma, Ryo and Mukaeda, Takayuki and Shima, Keisuke},
+  title     = {Neural Tangent Kernel を導入した Data Shapley 型疑似ラベル法に関する基礎検討},
+  author    = {Mitoma, Ryo and Mukaeda, Takayuki and Shima, Keisuke},
   booktitle = {The 40th Annual Conference of the Japanese Society for Artificial Intelligence},
-  year   = {2026},
+  year      = {2026},
 }
 ```
 
 ---
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
 
 ## Acknowledgements
 

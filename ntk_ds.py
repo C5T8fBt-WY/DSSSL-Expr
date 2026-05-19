@@ -4,44 +4,57 @@ NTK-based Data Shapley pseudo-labeling — minimal copy-paste utility.
 Key formula (from the paper):
     DS(x_U, ỹ) = Σ_{(x_i, y_i)} (p(x_U) - ỹ)ᵀ Θ(x_U, x_i) (p(x_i) - y_i)
 
-Under two approximations valid at random initialization:
-  1. Uniform softmax: p(x) ≈ 1/C for all classes
-  2. Diagonal NTK:   Θ(x, x') ≈ scalar × I  (holds exactly in the infinite-width limit)
+Under one approximation valid at random initialization:
+  - Uniform softmax: p(x) ≈ 1/C for all classes
 
-…the formula reduces to:
-    DS(x_U, ỹ) ≈ Σ_i coef(ỹ, y_i) * NTK_scalar(x_U, x_i)
+…and using the fact that the scalar NTK of a fully-connected network is
+automatically diagonal-in-class (neural_tangents reduces output channels
+analytically), the formula reduces to:
+
+    DS(x_U, ỹ) ≈ Σ_i coef(ỹ, y_i) * Θ_scalar(x_U, x_i)
 
 where:
-    coef = (C-1)/C  ≈ +0.9   if ỹ == y_i   (pseudo-label matches)
-    coef =    -1/C  ≈ -0.1   if ỹ != y_i   (pseudo-label mismatches)
+    coef = (C-1)/C  if ỹ == y_i  (pseudo-label matches labeled class)
+    coef =    -1/C  if ỹ != y_i  (pseudo-label mismatches)
 
 The scalar NTK is computed analytically via `neural_tangents` (Novak et al. 2020).
-For a 2-layer MLP with Erf activation, the closed-form kernel is available,
-enabling training-free pseudo-label selection in O(n_U × n_L) kernel evaluations.
+For an MLP with Erf activation this admits a closed form, enabling training-free
+pseudo-label selection in O(n_U × n_L) kernel evaluations.
 
 References:
-    Mitoma et al. 2026 (JSAI) — https://github.com/C5T8fBt-WY/DSSSL-Expr
+    Mitoma et al. 2026 (JSAI)
     Ghorbani & Zou 2019 — Data Shapley
     Wang et al. 2025 — gradient-based DS approximation
     Jacot et al. 2018 — Neural Tangent Kernel
     Novak et al. 2020 — neural_tangents library
 """
 
+from typing import Callable
+
 import numpy as np
 from neural_tangents import stax
 
 
-def build_mlp_kernel_fn(hidden_size: int = 256, n_hidden_layers: int = 2):
+def build_mlp_kernel_fn(
+    hidden_size: int = 256,
+    n_hidden_layers: int = 2,
+    n_classes: int = 10,
+) -> Callable:
     """
     Build an MLP with Erf activation and return its analytical NTK kernel function.
 
     Erf is used instead of Tanh because it admits a closed-form analytical NTK
-    in neural_tangents. In practice the two activations yield nearly identical
-    pseudo-label accuracy (within ±1 pp on MNIST, see paper §4).
+    in neural_tangents. The two activations yield nearly identical pseudo-label
+    accuracy in practice (within ±1 pp on MNIST, see paper §4).
+
+    The final readout width does not affect the scalar NTK value for stax
+    fully-connected networks (neural_tangents reduces output channels
+    analytically), so `n_classes` here is just metadata for the readout.
 
     Args:
         hidden_size:     Width of each hidden layer.
-        n_hidden_layers: Number of hidden layers (default 2, matching the paper).
+        n_hidden_layers: Number of hidden layers, not counting the readout.
+        n_classes:       Number of output classes (readout width).
 
     Returns:
         kernel_fn: Callable — kernel_fn(X1, X2, 'ntk') → (n1, n2) NTK matrix.
@@ -49,7 +62,7 @@ def build_mlp_kernel_fn(hidden_size: int = 256, n_hidden_layers: int = 2):
     layers = []
     for _ in range(n_hidden_layers):
         layers += [stax.Dense(hidden_size), stax.Erf()]
-    layers.append(stax.Dense(10))           # 10-class output
+    layers.append(stax.Dense(n_classes))
     _, _, kernel_fn = stax.serial(*layers)
     return kernel_fn
 
@@ -58,7 +71,7 @@ def compute_ntk_scores(
     labeled_x: np.ndarray,
     labeled_y: np.ndarray,
     unlabeled_x: np.ndarray,
-    kernel_fn,
+    kernel_fn: Callable,
     n_classes: int = 10,
 ) -> np.ndarray:
     """
@@ -66,30 +79,36 @@ def compute_ntk_scores(
 
     Args:
         labeled_x:   Shape (n_L, d)  — labeled features (flattened).
-        labeled_y:   Shape (n_L,)    — labeled class indices.
+        labeled_y:   Shape (n_L,)    — labeled integer class indices.
         unlabeled_x: Shape (n_U, d)  — unlabeled features (flattened).
         kernel_fn:   Output of build_mlp_kernel_fn().
-        n_classes:   Number of classes (10 for MNIST).
+        n_classes:   Number of classes (10 for MNIST). Must match build_mlp_kernel_fn.
 
     Returns:
-        scores: Shape (n_U, n_classes).  scores[i, c] is the DS score for
-                assigning pseudo-label c to unlabeled point i.
+        scores: Shape (n_U, n_classes). scores[i, c] is the (mean over labeled set)
+                DS score for assigning pseudo-label c to unlabeled point i.
                 The predicted pseudo-label is argmax over the class axis.
     """
+    labeled_y = np.asarray(labeled_y).astype(int).ravel()
     n_labeled = labeled_x.shape[0]
 
-    # Analytical NTK matrix — shape (n_U, n_L)
-    ntk_matrix = np.array(kernel_fn(unlabeled_x, labeled_x, 'ntk'))
+    ntk_matrix = np.asarray(kernel_fn(unlabeled_x, labeled_x, "ntk"))
+    assert ntk_matrix.ndim == 2, (
+        f"Expected scalar NTK of shape (n_U, n_L); got {ntk_matrix.shape}. "
+        "This utility supports only fully-connected stax models."
+    )
 
-    # Coefficients derived from the uniform-softmax approximation
-    match_coef    =  (n_classes - 1) / n_classes   # (C-1)/C  e.g. 0.9 for C=10
-    mismatch_coef = -1.0              / n_classes   #    -1/C  e.g. -0.1 for C=10
+    # Coefficients derived from the uniform-softmax approximation.
+    match_coef    =  (n_classes - 1) / n_classes
+    mismatch_coef = -1.0              / n_classes
 
-    scores = np.zeros((unlabeled_x.shape[0], n_classes))
-    for y_tilde in range(n_classes):
-        coefs = np.where(labeled_y == y_tilde, match_coef, mismatch_coef)  # (n_L,)
-        scores[:, y_tilde] = (ntk_matrix * coefs).sum(axis=1) / n_labeled
-
+    # Vectorized form of:
+    #   for c in range(n_classes):
+    #       coefs = where(labeled_y == c, match, mismatch)
+    #       scores[:, c] = (ntk_matrix * coefs).sum(axis=1) / n_labeled
+    onehot = np.eye(n_classes)[labeled_y]                                # (n_L, C)
+    coef_matrix = onehot * (match_coef - mismatch_coef) + mismatch_coef  # (n_L, C)
+    scores = ntk_matrix @ coef_matrix / n_labeled                        # (n_U, C)
     return scores
 
 
@@ -111,13 +130,13 @@ def select_pseudo_labels(scores: np.ndarray) -> np.ndarray:
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     import time
+
     from torchvision import datasets, transforms
 
     LABELS_PER_CLASS    = 5
     UNLABELED_PER_CLASS = 100
     SEED                = 42
 
-    # --- Load MNIST ----------------------------------------------------------
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,)),
@@ -147,7 +166,6 @@ if __name__ == "__main__":
     labeled_x,   labeled_y   = get_data(labeled_idx)
     unlabeled_x, true_labels = get_data(unlabeled_idx)
 
-    # --- NTK-DS pseudo-labeling ----------------------------------------------
     print("Building NTK kernel function…")
     kernel_fn = build_mlp_kernel_fn(hidden_size=256)
 
