@@ -105,3 +105,7 @@ MIT — see [`LICENSE`](LICENSE).
 ## Acknowledgements
 
 This work is supported by JST BOOST (grant JPMJBS2427).
+
+---
+
+Try the interactive demo on **[🤗 Hugging Face Spaces](https://huggingface.co/spaces/mryo00/ntk-data-shapley-demo)**.
