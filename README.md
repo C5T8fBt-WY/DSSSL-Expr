@@ -1,17 +1,7 @@
----
-title: NTK Data Shapley Demo
-emoji: 🧪
-colorFrom: blue
-colorTo: indigo
-sdk: gradio
-sdk_version: 6.14.0
-app_file: demo/app.py
-python_version: "3.12"
-pinned: false
-license: mit
----
-
 # DSSSL-Expr — NTK-based Data Shapley Pseudo-Labeling
+
+[![HuggingFace Space](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Space-blue)](https://huggingface.co/spaces/mryo00/ntk-data-shapley-demo)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Demo and reference code for the JSAI 2026 paper:
 

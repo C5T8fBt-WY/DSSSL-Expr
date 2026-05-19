@@ -1,0 +1,62 @@
+name: Deploy to HuggingFace Space
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install huggingface_hub
+        run: pip install "huggingface_hub>=0.24"
+
+      - name: Build Space README (prepend YAML frontmatter)
+        run: |
+          cat .github/spaces_readme_header.md README.md > /tmp/SPACE_README.md
+          mv /tmp/SPACE_README.md SPACE_README.md
+
+      - name: Upload to HuggingFace Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          SPACE_ID: mryo00/ntk-data-shapley-demo
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          from huggingface_hub import CommitOperationAdd, HfApi
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          space_id = os.environ["SPACE_ID"]
+
+          api.create_repo(repo_id=space_id, repo_type="space",
+                          space_sdk="gradio", exist_ok=True)
+
+          tracked = subprocess.check_output(["git", "ls-files"], text=True).splitlines()
+          # README.md gets replaced by the version with Spaces frontmatter
+          ops = []
+          for path in tracked:
+              if path == "README.md":
+                  ops.append(CommitOperationAdd("README.md", "SPACE_README.md"))
+              elif path.startswith(".github/"):
+                  continue
+              else:
+                  ops.append(CommitOperationAdd(path, path))
+
+          api.create_commit(
+              repo_id=space_id,
+              repo_type="space",
+              operations=ops,
+              commit_message=f"Sync from GitHub @ {os.environ.get('GITHUB_SHA', '')[:7]}",
+          )
+          print(f"Deployed to https://huggingface.co/spaces/{space_id}")
+          PY
